@@ -178,3 +178,6 @@ outputs/
 *.urdf
 *.xml
 *.part
+
+*.out
+*.err
