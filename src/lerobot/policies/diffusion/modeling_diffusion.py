@@ -95,6 +95,11 @@ class DiffusionPolicy(PreTrainedPolicy):
         """Predict a chunk of actions given environment observations."""
         # stack n latest observations from the queue
         batch = {k: torch.stack(list(self._queues[k]), dim=1) for k in batch if k in self._queues}
+        # rgb = np.array(batch['observation.images'][0,0,0].cpu()).transpose(1,2,0)
+        # rgb = 255*(rgb - np.min(rgb))/(np.max(rgb)-np.min(rgb))
+        # import cv2
+        # cv2.imwrite('test.png', rgb)
+        # print(1234567)
         actions = self.diffusion.generate_actions(batch, noise=noise)
 
         return actions
@@ -135,14 +140,22 @@ class DiffusionPolicy(PreTrainedPolicy):
             actions = self.predict_action_chunk(batch, noise=noise)
             self._queues[ACTION].extend(actions.transpose(0, 1))
 
-        action = self._queues[ACTION].popleft()
-        return action
+        #action = self._queues[ACTION].popleft()
+        actions = self.predict_action_chunk(batch, noise=noise)
+        return actions
 
     def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, None]:
         """Run the batch through the model and compute the loss for training or validation."""
         if self.config.image_features:
             batch = dict(batch)  # shallow copy so that adding a key doesn't modify the original
             batch[OBS_IMAGES] = torch.stack([batch[key] for key in self.config.image_features], dim=-4)
+        # print(7654321)
+        # print(batch['observation.images'].shape)
+        # rgb = np.array(batch['observation.images'][0,0,1].cpu()).transpose(1,2,0)
+        # rgb = 255*(rgb - np.min(rgb))/(np.max(rgb)-np.min(rgb))
+        # import cv2
+        # cv2.imwrite('testtrain.png', rgb)
+        # exit()
         loss = self.diffusion.compute_loss(batch)
         # no output_dict so returning None
         return loss, None

@@ -28,6 +28,10 @@ def make_robot_from_config(config: RobotConfig) -> Robot:
         from .koch_follower import KochFollower
 
         return KochFollower(config)
+    elif config.type == "diana_follower":
+        from .diana_follower import DianaFollower
+        
+        return DianaFollower(config)
     elif config.type == "omx_follower":
         from .omx_follower import OmxFollower
 
