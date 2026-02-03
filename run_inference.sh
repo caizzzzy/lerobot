@@ -6,7 +6,7 @@
 
 # --- 网络配置 ---
 SERVER_HOST="0.0.0.0"
-CLIENT_HOST="192.168.10.134"
+CLIENT_HOST="192.168.10.133"
 PORT="8080"
 
 # --- 机器人配置 (Robot) ---
@@ -17,11 +17,12 @@ ROBOT_PORT="192.168.10.76"              # 你的机器人连接端口
 # # --- 摄像头配置 (Camera) ---
 # # 注意：确保JSON格式正确，尤其是引号
 # CAMERAS="{ laptop: {type: opencv, index_or_path: 0, width: 1920, height: 1080, fps: 30}, phone: {type: opencv, index_or_path: 1, width: 1920, height: 1080, fps: 30}}"
-CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},cam_fish: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},cam_global: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
+# CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},cam_fish: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},cam_global: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
+CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 320, height: 240, fps: 30},cam_fish: {type: opencv, index_or_path: 0, width: 320, height: 240, fps: 30}}"
 # CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
 # --- 策略与模型配置 (Policy) ---
 POLICY_TYPE="diffusion"                      # 策略类型 (例如: act, smolvla, diffusion 等)
-MODEL_PATH="/mnt/nas/projects/robot/lerobot/outputs/train/picknput128/checkpoints/200000/pretrained_model"       # 服务器上的模型路径或 HuggingFace ID
+MODEL_PATH="/mnt/nas/projects/robot/lerobot/outputs/train/picknput0202/checkpoints/046400/pretrained_model"       # 服务器上的模型路径或 HuggingFace ID
 # TASK="dummy"                             # 任务名称 (部分策略不需要)
 POLICY_DEVICE="cuda"                      # 推理设备: 'cuda', 'mps' (Mac), or 'cpu'
 ACTIONS_PER_CHUNK=50                     # 每次推理输出的动作数量

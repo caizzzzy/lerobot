@@ -181,3 +181,8 @@ outputs/
 
 *.out
 *.err
+
+*.jpg
+*.png
+
+*.txt

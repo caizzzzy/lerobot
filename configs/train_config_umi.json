@@ -96,7 +96,7 @@
                 ]
             },
             
-            "observation.state": {
+            "servation.sobtate": {
                 "type": "STATE",
                 "shape": [
                     8

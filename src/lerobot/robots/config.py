@@ -27,13 +27,19 @@ class RobotConfig(draccus.ChoiceRegistry, abc.ABC):
     calibration_dir: Path | None = None
 
     def __post_init__(self):
-        if hasattr(self, "cameras") and self.cameras:
-            for _, config in self.cameras.items():
-                for attr in ["width", "height", "fps"]:
-                    if getattr(config, attr) is None:
-                        raise ValueError(
-                            f"Specifying '{attr}' is required for the camera to be used in a robot"
-                        )
+
+        for camera in self.cameras.values():
+            for attr in ["width", "height", "fps"]:
+                # --- [开始] 修改部分 ---
+                if isinstance(camera, dict):
+                    # 如果是字典，使用 .get() 方法
+                    val = camera.get(attr)
+                else:
+                    # 如果是对象，使用 getattr()
+                    val = getattr(camera, attr, None)
+
+                if val is None:
+                    raise ValueError(f"Camera config is missing '{attr}'")
 
     @property
     def type(self) -> str:

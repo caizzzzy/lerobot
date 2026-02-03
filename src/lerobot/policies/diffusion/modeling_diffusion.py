@@ -95,11 +95,11 @@ class DiffusionPolicy(PreTrainedPolicy):
         """Predict a chunk of actions given environment observations."""
         # stack n latest observations from the queue
         batch = {k: torch.stack(list(self._queues[k]), dim=1) for k in batch if k in self._queues}
-        # rgb = np.array(batch['observation.images'][0,0,0].cpu()).transpose(1,2,0)
-        # rgb = 255*(rgb - np.min(rgb))/(np.max(rgb)-np.min(rgb))
-        # import cv2
-        # cv2.imwrite('test.png', rgb)
-        # print(1234567)
+        rgb = np.array(batch['observation.images'][0,0,0].cpu()).transpose(1,2,0)
+        rgb = 255*(rgb - np.min(rgb))/(np.max(rgb)-np.min(rgb))
+        import cv2
+        cv2.imwrite('test.png', rgb)
+        print(1234567)
         actions = self.diffusion.generate_actions(batch, noise=noise)
 
         return actions

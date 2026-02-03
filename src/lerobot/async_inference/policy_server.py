@@ -62,6 +62,13 @@ from .helpers import (
     raw_observation_to_observation,
 )
 
+import os
+from pathlib import Path
+import numpy as np
+try:
+    import imageio.v2 as imageio
+except Exception:
+    imageio = None  # 没有 imageio 时退回 npy 保存
 
 class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
     prefix = "policy_server"
@@ -89,6 +96,8 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         self.policy = None
         self.preprocessor: PolicyProcessorPipeline[dict[str, Any], dict[str, Any]] | None = None
         self.postprocessor: PolicyProcessorPipeline[PolicyAction, PolicyAction] | None = None
+
+        self.debug_dir = "/mnt/nas/projects/robot/lerobot/picture/server"
 
     @property
     def running(self):
@@ -211,6 +220,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         ):
             self.logger.debug(f"Observation #{obs_timestep} has been filtered out")
 
+        timed_observation = pickle.loads(received_bytes)  # nosec
+        # self._debug_dump_obs(timed_observation)  # 打印+保存观测
+
         return services_pb2.Empty()
 
     def GetActions(self, request, context):  # noqa: N802
@@ -323,7 +335,8 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
 
     def _get_action_chunk(self, observation: dict[str, torch.Tensor]) -> torch.Tensor:
         """Get an action chunk from the policy. The chunk contains only"""
-        chunk = self.policy.predict_action_chunk(observation)
+        chunk = self.policy.select_action(observation)
+        # chunk = self.policy.predict_action_chunk(observation)
         if chunk.ndim != 3:
             chunk = chunk.unsqueeze(0)  # adding batch dimension, now shape is (B, chunk_size, action_dim)
 
@@ -410,6 +423,28 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         """Stop the server"""
         self._reset_server()
         self.logger.info("Server stopping...")
+
+    def _debug_dump_obs(self, obs: TimedObservation):
+        obs_dict = obs.get_observation()
+        ts = obs.get_timestep()
+        for key, val in obs_dict.items():
+            if hasattr(val, "shape"):
+                self.logger.info(f"[obs #{ts}] {key}: shape={val.shape}, dtype={getattr(val, 'dtype', type(val))}")
+            # 保存图像：只处理 ndarray 且 (H,W,1/3/4) 形状
+            if self.debug_dir and isinstance(val, np.ndarray) and val.ndim == 3 and val.shape[-1] in (1, 3, 4):
+                arr = val
+                if arr.dtype != np.uint8:
+                    # 若是 0~1 或其它数值，先裁剪/放大到 0~255
+                    maxv = float(arr.max()) if arr.size else 1.0
+                    arr = (arr * 255.0 if maxv <= 1.0 else arr)
+                    arr = np.clip(arr, 0, 255).astype(np.uint8)
+                # fname = self.debug_dir / f"{ts}_{key}.png"
+                fname = f"{self.debug_dir}/{ts}_{key}.png"
+                if imageio:
+                    imageio.imwrite(fname, arr)
+                else:
+                    # np.save(self.debug_dir / f"{ts}_{key}.npy", arr)
+                    np.save(self.debug_dir+f"/{ts}_{key}.npy", arr)  
 
 
 @draccus.wrap()

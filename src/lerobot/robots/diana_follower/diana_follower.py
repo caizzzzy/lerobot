@@ -160,8 +160,8 @@ class DianaFollower(Robot):
             "cam_fish": (self.config.cameras["cam_fish"]["height"], 
                       self.config.cameras["cam_fish"]["width"], 3),
 
-            "cam_global": (self.config.cameras["cam_global"]["height"], 
-                      self.config.cameras["cam_global"]["width"], 3)
+            # "cam_global": (self.config.cameras["cam_global"]["height"], 
+            #           self.config.cameras["cam_global"]["width"], 3)
         }
 
     @cached_property
@@ -250,7 +250,7 @@ class DianaFollower(Robot):
                 # LeRobot 期望 numpy array (H, W, C)
                 obs_dict["cam_high"] = self.ros_node.latest_image.copy()
                 obs_dict["cam_fish"] = self.ros_node.latest_imagefish.copy()
-                obs_dict["cam_global"] = self.ros_node.latest_imageglobal.copy()
+                # obs_dict["cam_global"] = self.ros_node.latest_imageglobal.copy()
                 # obs_dict["cam_high"] = np.zeros((480, 640, 3), dtype=np.uint8)
                 # obs_dict["cam_fish"] = np.zeros((480, 640, 3), dtype=np.uint8)
                 # obs_dict["cam_global"] = np.zeros((480, 640, 3), dtype=np.uint8)
@@ -260,7 +260,7 @@ class DianaFollower(Robot):
                 logger.warning("No image received from ROS yet.")
                 obs_dict["cam_high"] = np.zeros((480, 640, 3), dtype=np.uint8)
                 obs_dict["cam_fish"] = np.zeros((480, 640, 3), dtype=np.uint8)
-                obs_dict["cam_global"] = np.zeros((480, 640, 3), dtype=np.uint8)
+                # obs_dict["cam_global"] = np.zeros((480, 640, 3), dtype=np.uint8)
 
 
 
@@ -279,7 +279,7 @@ class DianaFollower(Robot):
                 save_tasks = {
                     "picture/debug_view.jpg": obs_dict.get("cam_high"),
                     "picture/debug_viewfish.jpg": obs_dict.get("cam_fish"),
-                    "picture/debug_viewglobal.jpg": obs_dict.get("cam_global")
+                    # "picture/debug_viewglobal.jpg": obs_dict.get("cam_global")
                 }
 
                 for path, img in save_tasks.items():
