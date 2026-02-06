@@ -30,7 +30,7 @@ from scipy.spatial.transform import Rotation as R
 # Diana SDK Import
 try:
     from diana_sdk.diana_robot.DianaRobot import DianaRobot
-    from diana_sdk.diana_robot.DianaApi import DIANA_TCP_POSE, servoJ_ex, servoL_ex
+    from diana_sdk.diana_robot.DianaApi import DIANA_TCP_POSE, servoJ_ex, servoL_ex, getTcpPos
     from diana_sdk.diana_robot.DianaApi import *
 except ImportError:
     logging.warning("Diana SDK not found. Please ensure diana_sdk is in PYTHONPATH.")
@@ -263,26 +263,27 @@ class DianaFollower(Robot):
         if 'pose' in self.config.control_mode:
             # Pose Mode: 获取末端 TCP 位姿
             try:
-                tcp_pose = DIANA_TCP_POSE()
-                self.diana_arm.getTcpPos(tcp_pose, self.config.port)
+                # getTcpPos 需要一个 list 作为输出容器
+                tcp_pose = [0.0] * 6
+                getTcpPos(tcp_pose, self.config.port)
                 
                 if self.config.control_mode == 'pose_quat':
                     # 转换 Euler -> Quaternion
-                    # 假设 Diana 返回的是 "Euler XYZ" (对应用户请求的6变量欧拉角)
-                    # 注意: 具体顺序需据实调整，这里假设 rx, ry, rz 对应 scipy 的 xyz
-                    r = R.from_euler('xyz', [tcp_pose.rx, tcp_pose.ry, tcp_pose.rz], degrees=False)
+                    # Diana 返回 Euler XYZ (rx, ry, rz)
+                    x, y, z, rx, ry, rz = tcp_pose
+                    r = R.from_euler('xyz', [rx, ry, rz], degrees=False)
                     quat = r.as_quat() # [x, y, z, w]
                     
-                    obs_dict['ee_x'] = float(tcp_pose.x)
-                    obs_dict['ee_y'] = float(tcp_pose.y)
-                    obs_dict['ee_z'] = float(tcp_pose.z)
+                    obs_dict['ee_x'] = float(x)
+                    obs_dict['ee_y'] = float(y)
+                    obs_dict['ee_z'] = float(z)
                     obs_dict['ee_qx'] = float(quat[0])
                     obs_dict['ee_qy'] = float(quat[1])
                     obs_dict['ee_qz'] = float(quat[2])
                     obs_dict['ee_qw'] = float(quat[3])
                 else:
                     # 使用 6 变量 Euler
-                    for key, value in zip(self.ee_pose_keys, list(tcp_pose.values)):
+                    for key, value in zip(self.ee_pose_keys, tcp_pose):
                         obs_dict[key] = float(value)
                         
             except Exception as e:
