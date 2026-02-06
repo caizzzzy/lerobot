@@ -1,7 +1,7 @@
 {
     "dataset": {
-        "repo_id": "lerobot_dataset_agilex0127",
-        "root": "data/lerobot_dataset_agilex0127_240*320",
+        "repo_id": "lerobot_dataset_agilex0204",
+        "root": "data/lerobot_dataset_agilex0204",
         "episodes": null,
         "image_transforms": {
             "enable": true,
@@ -87,7 +87,7 @@
                     320
                 ]
             },
-            "observation.images.cam_fish": {
+            "observation.images.cam_global": {
                 "type": "VISUAL",
                 "shape": [
                     3,
@@ -153,8 +153,8 @@
         "scheduler_name": "cosine",
         "scheduler_warmup_steps": 500
     },
-    "output_dir": "outputs/train/picknput0202",
-    "job_name": "picknput",
+    "output_dir": "outputs/train/picknput0204_1",
+    "job_name": "picknput0204",
     "resume": false,
     "seed": 100000,
     "num_workers": 4,
