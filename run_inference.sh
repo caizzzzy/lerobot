@@ -22,7 +22,7 @@ CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 320, height: 240, fp
 # CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
 # --- 策略与模型配置 (Policy) ---
 POLICY_TYPE="diffusion"                      # 策略类型 (例如: act, smolvla, diffusion 等)
-MODEL_PATH="/mnt/nas/projects/robot/lerobot/outputs/train/picknput0202/checkpoints/046400/pretrained_model"       # 服务器上的模型路径或 HuggingFace ID
+MODEL_PATH="/mnt/nas/projects/robot/lerobot/outputs/train/picknput0202/checkpoints/064800/pretrained_model"       # 服务器上的模型路径或 HuggingFace ID
 # TASK="dummy"                             # 任务名称 (部分策略不需要)
 POLICY_DEVICE="cuda"                      # 推理设备: 'cuda', 'mps' (Mac), or 'cpu'
 ACTIONS_PER_CHUNK=50                     # 每次推理输出的动作数量

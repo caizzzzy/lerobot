@@ -115,7 +115,10 @@
         "n_action_steps": 8,
         "drop_n_last_frames": 7,
         "vision_backbone": "resnet18",
-        "crop_shape": null,
+        "crop_shape": [
+            216,
+            288
+        ],
         "crop_is_random": true,
         "pretrained_backbone_weights": null,
         "use_group_norm": true,

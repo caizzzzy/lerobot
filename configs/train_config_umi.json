@@ -1,7 +1,7 @@
 {
     "dataset": {
-        "repo_id": "lerobot_dataset_agilex0127",
-        "root": "data/lerobot_dataset_agilex0127_240*320",
+        "repo_id": "lerobot_dataset_umi_0203_resized",
+        "root": "data/lerobot_dataset_umi_0203_resized",
         "episodes": null,
         "image_transforms": {
             "enable": true,
@@ -75,8 +75,8 @@
         "use_amp": false,
         "normalization_mapping": {
             "VISUAL": "MEAN_STD",
-            "STATE": "MIN_MAX",
-            "ACTION": "MIN_MAX"
+            "STATE": "MEAN_STD",
+            "ACTION": "MEAN_STD"
         },
         "input_features": {
             "observation.images.cam_high": {
@@ -96,10 +96,10 @@
                 ]
             },
             
-            "servation.sobtate": {
+            "observation.state": {
                 "type": "STATE",
                 "shape": [
-                    8
+                    7
                 ]
             }
         },
@@ -107,14 +107,14 @@
             "action": {
                 "type": "ACTION",
                 "shape": [
-                    8
+                    7
                 ]
             }
         },
         "horizon": 16,
         "n_action_steps": 8,
         "drop_n_last_frames": 7,
-        "vision_backbone": "resnet18",
+        "vision_backbone": "resnet34",
         "crop_shape": null,
         "crop_is_random": true,
         "pretrained_backbone_weights": null,
@@ -150,8 +150,8 @@
         "scheduler_name": "cosine",
         "scheduler_warmup_steps": 500
     },
-    "output_dir": "outputs/train/picknput0202",
-    "job_name": "picknput",
+    "output_dir": "outputs/train/picknput0204_umi",
+    "job_name": "apple",
     "resume": false,
     "seed": 100000,
     "num_workers": 4,

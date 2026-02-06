@@ -3,13 +3,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torchvision
-# [新增] 引入 functional 模块用于图像变换
-import torchvision.transforms.functional as TF 
 from pathlib import Path
 import shutil
 import json
 from tqdm import tqdm
-import os
 
 # --- 1. 版本设定 ---
 CODEBASE_VERSION = "v3.0"
@@ -20,130 +17,135 @@ CODEBASE_VERSION = "v3.0"
 SOURCE_ROOT = Path("/home/robot/agilex/data_umi202") 
 
 # 输出目录
-OUTPUT_ROOT = Path("/mnt/nas/projects/robot/lerobot/data/lerobot_dataset_umi_0203_resized")
+OUTPUT_ROOT = Path("/mnt/nas/projects/robot/lerobot/data/lerobot_dataset_umi_0203")
 
-# 彩色摄像头映射
+# 1. 彩色摄像头映射
 CAMERA_MAPPING = {
-    "pikaDepthCamera": "cam_high", 
-    "pikaFisheyeCamera": "cam_fish",
+    "pikaGripperDepthCamera": "cam_high", 
+    "pikaGripperFisheyeCamera": "cam_fish",
     "globalRealSense": "cam_global",
 }
+
+# # 2. [新增] 深度摄像头映射
+# # key: hdf5中的名称, value: lerobot数据集中的简称
+# DEPTH_MAPPING = {
+#     "cam_wrist_depth": "cam_wrist_depth", # 假设手腕相机有深度
+# }
 
 # 机器人/任务配置
 ROBOT_TYPE = "umi_agilex"
 FPS = 30
 TASK_DESCRIPTION = "Pick up object with UMI" 
 
-# [新增] 缩放比例
-RESIZE_FACTOR = 0.5 
-
 # =============================================================
 
 def get_image_paths_from_hdf5(h5_file, episode_dir, mapping):
-    """提取 RGB 彩色图像路径 (含路径修复逻辑)"""
+    """通用的路径提取函数，适用于 Color 和 Depth"""
     img_paths_dict = {}
     with h5py.File(h5_file, 'r') as f:
+        # 这一层结构取决于你之前的 data_to_hdf5.py 怎么写的
+        # 假设深度图在 'camera/depth' 下，彩色在 'camera/color' 下
+        # 这里我们需要根据 key 的类型去不同的 group 找
+        
         # 尝试查找 Color
         if 'camera' in f and 'color' in f['camera']:
             for cam_name in f['camera']['color'].keys():
                 if cam_name in mapping:
                     target_name = mapping[cam_name]
                     raw_paths = f[f'camera/color/{cam_name}'][:]
-                    
-                    abs_paths = []
-                    for p in raw_paths:
-                        # 1. 解码二进制字符串
-                        rel_path = p.decode('utf-8') if isinstance(p, bytes) else p
-                        
-                        # [关键修复] 去掉开头的 /
-                        if rel_path.startswith('/'):
-                            rel_path = rel_path[1:]
-                        
-                        # 2. 拼接完整路径
-                        full_path = episode_dir / rel_path
-                        abs_paths.append(str(full_path))
-                        
+                    abs_paths = [str(episode_dir / (p.decode('utf-8') if isinstance(p, bytes) else p)) for p in raw_paths]
                     img_paths_dict[target_name] = abs_paths
+
+        # # 尝试查找 Depth (如果 mapping 里有深度图的 key)
+        # if 'camera' in f and 'depth' in f['camera']:
+        #     for cam_name in f['camera']['depth'].keys():
+        #         if cam_name in mapping:
+        #             target_name = mapping[cam_name]
+        #             raw_paths = f[f'camera/depth/{cam_name}'][:]
+        #             abs_paths = [str(episode_dir / (p.decode('utf-8') if isinstance(p, bytes) else p)) for p in raw_paths]
+        #             img_paths_dict[target_name] = abs_paths
+                    
     return img_paths_dict
 
-def encode_video_frames(image_paths, output_path, fps, resize_factor=1.0):
-    """将图片序列编码为 MP4 视频，支持缩放"""
-    if not image_paths: 
-        print(f"[Warn] 空的图片路径列表")
-        return 0, 0, 0 
-    
+def encode_video_frames(image_paths, output_path, fps, is_depth=False):
+    if not image_paths: return 0, 0, 0 
     if not Path(image_paths[0]).exists():
-        print(f"[Error] 图片文件不存在: {image_paths[0]}")
+        print(f"Error: Image not found: {image_paths[0]}")
         return 0, 0, 0
     
-    # 读取第一帧获取原始尺寸
-    first_img = torchvision.io.read_image(image_paths[0]) # shape: (C, H, W)
-    C_orig, H_orig, W_orig = first_img.shape
+    # 读取第一帧获取尺寸
+    # torchvision 读取出来是 (C, H, W)
+    # 对于 png 深度图，read_image 可能会读取为 1通道 (1, H, W) 或 (3, H, W)
+    first_img = torchvision.io.read_image(image_paths[0])
+    C, H, W = first_img.shape
     T = len(image_paths)
-
-    # [新增] 计算目标尺寸
-    H_new = int(H_orig * resize_factor)
-    W_new = int(W_orig * resize_factor)
     
-    # 构建视频 Tensor (T, H_new, W_new, C)，MP4 需要 3 通道 uint8
-    video_tensor = torch.zeros((T, H_new, W_new, 3), dtype=torch.uint8)
+    # 构建视频 Tensor (T, H, W, C)
+    # 注意：write_video 期望输入 (T, H, W, C) 且 dtype=uint8
+    video_tensor = torch.zeros((T, H, W, 3), dtype=torch.uint8) # 强制 3 通道以兼容 MP4
 
     for i, img_path in enumerate(image_paths):
         if Path(img_path).exists():
-            img = torchvision.io.read_image(img_path) # (C, H, W)
+            # read_image 会根据文件后缀自动处理，对于 16bit png 深度图，这里可能需要特殊处理
+            # 简化起见，假设深度图已保存为可视化的 8bit 图像，或者是单通道 png
+            img = torchvision.io.read_image(img_path) 
             
-            # [新增] 执行图像缩放
-            if resize_factor != 1.0:
-                # 使用双线性插值进行缩放
-                img = TF.resize(img, [H_new, W_new], interpolation=TF.InterpolationMode.BILINEAR, antialias=True)
+            if is_depth:
+                # 如果是深度图且是单通道
+                if img.shape[0] == 1:
+                    # 复制 3 份变成 RGB 格式，以便存为 MP4
+                    img = img.repeat(3, 1, 1)
+                # 如果深度图是 16bit int (I16)，read_image 可能会读成 int32 或 int16
+                # 这里为了可视化，简单归一化到 0-255 uint8
+                if img.dtype != torch.uint8:
+                     img = (img.float() / img.max() * 255).byte()
 
-            # 确保是 (C, H, W) -> (H, W, C)
-            video_tensor[i] = img.permute(1, 2, 0)
+            video_tensor[i] = img.permute(1, 2, 0) # (C,H,W) -> (H,W,C)
         
     torchvision.io.write_video(str(output_path), video_tensor, fps)
-    # 返回新的尺寸
-    return T, H_new, W_new
+    return T, H, W
 
 def load_state_action(h5_file):
     with h5py.File(h5_file, 'r') as f:
         # ==========================================
         # 1. 动态读取 Pose (6维)
         # ==========================================
+        # 不写死 'pika'，而是去 localization/pose 下找第一个可用的名字
         pose_group_path = 'localization/pose'
         if pose_group_path not in f:
-            if 'arm/endPose' in f:
-                pose_group_path = 'arm/endPose'
-            else:
-                raise KeyError(f"找不到组: {pose_group_path} 或 arm/endPose")
+            raise KeyError(f"找不到组: {pose_group_path}。可用的根组: {list(f.keys())}")
         
+        # 获取该组下所有键名 (例如 ['pika'] 或 ['puppet'])
         pose_keys = list(f[pose_group_path].keys())
         if not pose_keys:
             raise KeyError(f"组 {pose_group_path} 是空的！")
         
+        # 使用第一个键名
         target_pose_name = pose_keys[0]
         raw_pose = f[f'{pose_group_path}/{target_pose_name}'][:] 
         
         # ==========================================
         # 2. 动态读取 Gripper (1维)
         # ==========================================
+        # 同样不写死 'pikaSensor'，去 gripper/encoderDistance 下找第一个
         gripper_group_path = 'gripper/encoderDistance'
         
+        # 如果找不到 distance，尝试找 angle 做备选（防止某些数据只有角度）
         if gripper_group_path not in f:
+            print(f"Warning: {gripper_group_path} 不存在，尝试使用 encoderAngle...")
             gripper_group_path = 'gripper/encoderAngle'
 
-        if gripper_group_path in f:
-            gripper_keys = list(f[gripper_group_path].keys())
-            if not gripper_keys:
-                raise KeyError(f"组 {gripper_group_path} 是空的！")
-            
-            if 'pikaSensor' in gripper_keys:
-                target_gripper_name = 'pikaSensor'
-            else:
-                target_gripper_name = gripper_keys[0]
-            
-            gripper_data = f[f'{gripper_group_path}/{target_gripper_name}'][:]
+        gripper_keys = list(f[gripper_group_path].keys())
+        if not gripper_keys:
+            raise KeyError(f"组 {gripper_group_path} 是空的！")
+        
+        # 优先找 'pikaSensor'，如果没找到就用第一个 (比如 'pikaGripper')
+        if 'pikaSensor' in gripper_keys:
+            target_gripper_name = 'pikaSensor'
         else:
-             gripper_data = np.zeros((raw_pose.shape[0], 1))
+            target_gripper_name = gripper_keys[0]
+            
+        gripper_data = f[f'{gripper_group_path}/{target_gripper_name}'][:]
         
         if gripper_data.ndim == 1: 
             gripper_data = gripper_data[:, np.newaxis]
@@ -151,11 +153,45 @@ def load_state_action(h5_file):
         timestamps = f['timestamp'][:]
         
     # 3. 拼接 State (Pose + Gripper)
-    min_len = min(len(raw_pose), len(gripper_data))
-    state = np.concatenate([raw_pose[:min_len], gripper_data[:min_len]], axis=1).astype(np.float32)
+    state = np.concatenate([raw_pose, gripper_data], axis=1).astype(np.float32)
     action = state.copy()
     
-    return state, action, timestamps[:min_len]
+    return state, action, timestamps
+# def load_state_action(h5_file):
+#     with h5py.File(h5_file, 'r') as f:
+#         # [修改点 1] 读取 End Pose 而不是 Joint State
+#         # 假设你的 HDF5 结构里，末端位姿存在 'arm/endPose/...'
+#         # 根据你之前的代码，endPose 包含 [x, y, z, roll, pitch, yaw] (6维)
+#         # pose_group = f['localization/pose/pika']
+#         # pose_key = list(pose_group.keys())[0]
+
+#         # 注意：这里读出来是 [N, 6] 还是 [N, 7]? 
+#         # 之前的代码如果包含 grasper 则是 7，否则 6。
+#         # 我们假设这里只取前 6 维作为 Pose，夹爪单独读
+#         raw_pose = f['localization/pose/pika'][:] 
+        
+#         # 如果 raw_pose 已经是 [x, y, z, r, p, y]，维度是 6
+#         # 如果 UMI 使用的是四元数 [x, y, z, qx, qy, qz, qw]，维度是 7
+#         # 这里直接使用 raw_pose，后续在 metadata 里定义名字即可
+        
+#         # 读取夹爪数据
+#         # gripper_group = f['gripper/encoderDistance'] # 或者 encoderAngle，看你用哪个
+#         # gripper_key = list(gripper_group.keys())[0]
+#         # gripper_data = gripper_group[gripper_key][:] /gripper/encoderDistance/pikaSensor
+#         gripper_data = f['gripper/encoderDistance/pikaGripper'][:]
+#         if gripper_data.ndim == 1: gripper_data = gripper_data[:, np.newaxis]
+            
+#         timestamps = f['timestamp'][:]
+        
+#     # [修改点 2] 拼接 State
+#     # State = Pose + Gripper
+#     state = np.concatenate([raw_pose, gripper_data], axis=1).astype(np.float32)
+    
+#     # Action = State (简化版，假设模仿当前动作)
+#     # 对于 UMI，通常我们希望预测未来的 Pose，这里先保持 action=state 用于数据转换
+#     action = state.copy()
+    
+#     return state, action, timestamps
 
 def convert():
     if OUTPUT_ROOT.exists(): shutil.rmtree(OUTPUT_ROOT)
@@ -170,7 +206,7 @@ def convert():
     total_frames = 0
     all_states = []
     all_actions = []
-    img_dims = {} 
+    img_dims = {} # 记录相机尺寸
 
     episode_dirs = sorted([d for d in SOURCE_ROOT.iterdir() if d.is_dir() and (d/"data.hdf5").exists()])
     
@@ -178,7 +214,7 @@ def convert():
         print(f"No episodes found in {SOURCE_ROOT}")
         return
 
-    print(f"Found {len(episode_dirs)} episodes. Converting with resize factor {RESIZE_FACTOR}...")
+    print(f"Found {len(episode_dirs)} episodes. Converting...")
 
     for ep_idx, ep_dir in enumerate(tqdm(episode_dirs)):
         h5_path = ep_dir / "data.hdf5"
@@ -194,9 +230,8 @@ def convert():
         
         # 获取图片路径
         color_paths_map = get_image_paths_from_hdf5(h5_path, ep_dir, CAMERA_MAPPING)
-        
-        if not color_paths_map:
-             print(f"[Warn] Episode {ep_idx} 没有匹配到任何摄像头数据，请检查 CAMERA_MAPPING")
+        depth_paths_map = get_image_paths_from_hdf5(h5_path, ep_dir, DEPTH_MAPPING)
+        all_img_maps = {**color_paths_map, **depth_paths_map}
 
         ep_meta = {
             "episode_index": ep_idx,
@@ -209,7 +244,7 @@ def convert():
         }
 
         # 视频转换
-        for cam_key, paths in color_paths_map.items():
+        for cam_key, paths in all_img_maps.items():
             full_cam_key = f"observation.images.{cam_key}"
             
             vid_dir = OUTPUT_ROOT / "videos" / full_cam_key / f"chunk-{CHUNK_ID:03d}"
@@ -217,14 +252,12 @@ def convert():
             
             vid_out_path = vid_dir / f"file-{ep_idx:06d}.mp4"
             
-            # [修改] 传入 resize_factor
-            T, H, W = encode_video_frames(paths, vid_out_path, FPS, resize_factor=RESIZE_FACTOR)
+            is_depth = cam_key in DEPTH_MAPPING.values()
             
-            if T == 0:
-                continue
-
+            T, H, W = encode_video_frames(paths, vid_out_path, FPS, is_depth=is_depth)
+            
             if cam_key not in img_dims: 
-                img_dims[cam_key] = {"width": W, "height": H}
+                img_dims[cam_key] = {"width": W, "height": H, "is_depth": is_depth}
             
             ep_meta[f"videos/{full_cam_key}/chunk_index"] = CHUNK_ID
             ep_meta[f"videos/{full_cam_key}/file_index"] = ep_idx
@@ -249,7 +282,7 @@ def convert():
             
         total_frames += num_frames
 
-    # 保存 Parquet 和 Stats
+    # 保存 Parquet
     print("Saving Data Parquet...")
     pd.DataFrame(dataset_rows).to_parquet(OUTPUT_ROOT / "data" / f"chunk-{CHUNK_ID:03d}" / "file-000.parquet")
     
@@ -263,12 +296,14 @@ def convert():
     tasks_df.set_index("task_index", inplace=True)
     tasks_df.to_parquet(OUTPUT_ROOT / "meta" / "tasks.parquet")
 
+    # 生成 Info 和 Stats
     print("Generating Info & Stats...")
     
     if all_states:
         all_states_np = np.concatenate(all_states, axis=0)
         state_dim = all_states_np.shape[1]
         
+        # [关键设置] 这里定义维度名称，7维
         feat_names = ["x", "y", "z", "roll", "pitch", "yaw", "gripper"]
             
         stats = {
@@ -290,6 +325,7 @@ def convert():
         stats = {}
         feat_names = []
 
+    # 图像占位统计数据
     for cam_key in img_dims.keys():
         full_cam_key = f"observation.images.{cam_key}"
         stats[full_cam_key] = {
@@ -320,30 +356,12 @@ def convert():
                 "video.fps": FPS, 
                 "video.codec": "av1", 
                 "video.pix_fmt": "rgb24", 
-                "video.is_depth_map": False, 
+                "video.is_depth_map": dims['is_depth'],
                 "has_audio": False
             }
         }
 
-    # ==============================================================================
-    # [修复] 补全 Info 字典，确保包含 total_frames, total_episodes 等关键字段
-    # ==============================================================================
-    info = {
-        "codebase_version": CODEBASE_VERSION,
-        "fps": FPS,
-        "robot_type": ROBOT_TYPE,
-        "total_episodes": len(episodes_meta),
-        "total_frames": total_frames,
-        "total_tasks": 1,
-        "features": features_dict,
-        "data_path": "data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet",
-        "video_path": "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:06d}.mp4",
-        "chunks_size": 1000, 
-        "data_files_size_in_mb": 500,
-        "video_files_size_in_mb": 500
-    }
-
-    with open(OUTPUT_ROOT / "meta" / "info.json", "w") as f: json.dump(info, f, indent=4)
+    with open(OUTPUT_ROOT / "meta" / "info.json", "w") as f: json.dump({"codebase_version": CODEBASE_VERSION, "fps": FPS, "robot_type": ROBOT_TYPE, "features": features_dict}, f, indent=4)
     with open(OUTPUT_ROOT / "meta" / "stats.json", "w") as f: json.dump(stats, f, indent=4)
 
     print(f"✅ Conversion Done! Output: {OUTPUT_ROOT}")

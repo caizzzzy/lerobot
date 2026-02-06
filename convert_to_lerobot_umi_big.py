@@ -3,8 +3,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torchvision
-# [新增] 引入 functional 模块用于图像变换
-import torchvision.transforms.functional as TF 
 from pathlib import Path
 import shutil
 import json
@@ -16,13 +14,15 @@ CODEBASE_VERSION = "v3.0"
 
 # ================= 配置区域 =================
 
-# 原始数据父目录
+# [重要] 原始数据父目录 (请确保这里面是 episode0, episode1...)
 SOURCE_ROOT = Path("/home/robot/agilex/data_umi202") 
 
 # 输出目录
-OUTPUT_ROOT = Path("/mnt/nas/projects/robot/lerobot/data/lerobot_dataset_umi_0203_resized")
+OUTPUT_ROOT = Path("/mnt/nas/projects/robot/lerobot/data/lerobot_dataset_umi_0203")
 
-# 彩色摄像头映射
+# 1. 彩色摄像头映射
+# Key: HDF5 文件中 camera/color/ 下的名字
+# Value: LeRobot 数据集中的标准名字 (建议: cam_high, cam_wrist, cam_left, cam_right)
 CAMERA_MAPPING = {
     "pikaDepthCamera": "cam_high", 
     "pikaFisheyeCamera": "cam_fish",
@@ -33,9 +33,6 @@ CAMERA_MAPPING = {
 ROBOT_TYPE = "umi_agilex"
 FPS = 30
 TASK_DESCRIPTION = "Pick up object with UMI" 
-
-# [新增] 缩放比例
-RESIZE_FACTOR = 0.5 
 
 # =============================================================
 
@@ -55,7 +52,8 @@ def get_image_paths_from_hdf5(h5_file, episode_dir, mapping):
                         # 1. 解码二进制字符串
                         rel_path = p.decode('utf-8') if isinstance(p, bytes) else p
                         
-                        # [关键修复] 去掉开头的 /
+                        # [关键修复] 如果路径以 / 开头，pathlib 会认为它是绝对路径而忽略 episode_dir
+                        # 所以我们必须去掉开头的 /
                         if rel_path.startswith('/'):
                             rel_path = rel_path[1:]
                         
@@ -66,43 +64,35 @@ def get_image_paths_from_hdf5(h5_file, episode_dir, mapping):
                     img_paths_dict[target_name] = abs_paths
     return img_paths_dict
 
-def encode_video_frames(image_paths, output_path, fps, resize_factor=1.0):
-    """将图片序列编码为 MP4 视频，支持缩放"""
+def encode_video_frames(image_paths, output_path, fps):
+    """将图片序列编码为 MP4 视频 (仅处理 RGB)"""
     if not image_paths: 
         print(f"[Warn] 空的图片路径列表")
         return 0, 0, 0 
     
+    # 检查第一帧是否存在，避免后续报错
     if not Path(image_paths[0]).exists():
         print(f"[Error] 图片文件不存在: {image_paths[0]}")
+        print(f"       请检查 SOURCE_ROOT 是否正确，或 HDF5 内的相对路径是否正确。")
         return 0, 0, 0
     
-    # 读取第一帧获取原始尺寸
-    first_img = torchvision.io.read_image(image_paths[0]) # shape: (C, H, W)
-    C_orig, H_orig, W_orig = first_img.shape
+    # 读取第一帧获取尺寸
+    first_img = torchvision.io.read_image(image_paths[0])
+    C, H, W = first_img.shape
     T = len(image_paths)
-
-    # [新增] 计算目标尺寸
-    H_new = int(H_orig * resize_factor)
-    W_new = int(W_orig * resize_factor)
     
-    # 构建视频 Tensor (T, H_new, W_new, C)，MP4 需要 3 通道 uint8
-    video_tensor = torch.zeros((T, H_new, W_new, 3), dtype=torch.uint8)
+    # 构建视频 Tensor (T, H, W, C)
+    # MP4 需要 3 通道 uint8
+    video_tensor = torch.zeros((T, H, W, 3), dtype=torch.uint8)
 
     for i, img_path in enumerate(image_paths):
         if Path(img_path).exists():
-            img = torchvision.io.read_image(img_path) # (C, H, W)
-            
-            # [新增] 执行图像缩放
-            if resize_factor != 1.0:
-                # 使用双线性插值进行缩放
-                img = TF.resize(img, [H_new, W_new], interpolation=TF.InterpolationMode.BILINEAR, antialias=True)
-
+            img = torchvision.io.read_image(img_path) 
             # 确保是 (C, H, W) -> (H, W, C)
             video_tensor[i] = img.permute(1, 2, 0)
         
     torchvision.io.write_video(str(output_path), video_tensor, fps)
-    # 返回新的尺寸
-    return T, H_new, W_new
+    return T, H, W
 
 def load_state_action(h5_file):
     with h5py.File(h5_file, 'r') as f:
@@ -111,6 +101,7 @@ def load_state_action(h5_file):
         # ==========================================
         pose_group_path = 'localization/pose'
         if pose_group_path not in f:
+            # 兼容性处理：有些旧数据可能在 arm/endPose
             if 'arm/endPose' in f:
                 pose_group_path = 'arm/endPose'
             else:
@@ -129,6 +120,7 @@ def load_state_action(h5_file):
         gripper_group_path = 'gripper/encoderDistance'
         
         if gripper_group_path not in f:
+            print(f"Warning: {gripper_group_path} 不存在，尝试使用 encoderAngle...")
             gripper_group_path = 'gripper/encoderAngle'
 
         if gripper_group_path in f:
@@ -143,6 +135,8 @@ def load_state_action(h5_file):
             
             gripper_data = f[f'{gripper_group_path}/{target_gripper_name}'][:]
         else:
+             # 如果完全找不到夹爪数据，生成全0数据防止报错 (调试用)
+             print("[Warning] 完全找不到夹爪数据，使用全0填充")
              gripper_data = np.zeros((raw_pose.shape[0], 1))
         
         if gripper_data.ndim == 1: 
@@ -151,6 +145,7 @@ def load_state_action(h5_file):
         timestamps = f['timestamp'][:]
         
     # 3. 拼接 State (Pose + Gripper)
+    # 确保行数一致
     min_len = min(len(raw_pose), len(gripper_data))
     state = np.concatenate([raw_pose[:min_len], gripper_data[:min_len]], axis=1).astype(np.float32)
     action = state.copy()
@@ -170,7 +165,7 @@ def convert():
     total_frames = 0
     all_states = []
     all_actions = []
-    img_dims = {} 
+    img_dims = {} # 记录相机尺寸
 
     episode_dirs = sorted([d for d in SOURCE_ROOT.iterdir() if d.is_dir() and (d/"data.hdf5").exists()])
     
@@ -178,7 +173,7 @@ def convert():
         print(f"No episodes found in {SOURCE_ROOT}")
         return
 
-    print(f"Found {len(episode_dirs)} episodes. Converting with resize factor {RESIZE_FACTOR}...")
+    print(f"Found {len(episode_dirs)} episodes. Converting...")
 
     for ep_idx, ep_dir in enumerate(tqdm(episode_dirs)):
         h5_path = ep_dir / "data.hdf5"
@@ -192,9 +187,10 @@ def convert():
         all_states.append(state)
         all_actions.append(action)
         
-        # 获取图片路径
+        # 获取图片路径 (仅 Color)
         color_paths_map = get_image_paths_from_hdf5(h5_path, ep_dir, CAMERA_MAPPING)
         
+        # 如果没有找到任何图片，打印警告
         if not color_paths_map:
              print(f"[Warn] Episode {ep_idx} 没有匹配到任何摄像头数据，请检查 CAMERA_MAPPING")
 
@@ -217,10 +213,11 @@ def convert():
             
             vid_out_path = vid_dir / f"file-{ep_idx:06d}.mp4"
             
-            # [修改] 传入 resize_factor
-            T, H, W = encode_video_frames(paths, vid_out_path, FPS, resize_factor=RESIZE_FACTOR)
+            # 编码视频
+            T, H, W = encode_video_frames(paths, vid_out_path, FPS)
             
             if T == 0:
+                print(f"[Error] 视频 {vid_out_path} 生成失败 (T=0)")
                 continue
 
             if cam_key not in img_dims: 
@@ -249,7 +246,7 @@ def convert():
             
         total_frames += num_frames
 
-    # 保存 Parquet 和 Stats
+    # 保存 Parquet
     print("Saving Data Parquet...")
     pd.DataFrame(dataset_rows).to_parquet(OUTPUT_ROOT / "data" / f"chunk-{CHUNK_ID:03d}" / "file-000.parquet")
     
@@ -263,12 +260,14 @@ def convert():
     tasks_df.set_index("task_index", inplace=True)
     tasks_df.to_parquet(OUTPUT_ROOT / "meta" / "tasks.parquet")
 
+    # 生成 Info 和 Stats
     print("Generating Info & Stats...")
     
     if all_states:
         all_states_np = np.concatenate(all_states, axis=0)
         state_dim = all_states_np.shape[1]
         
+        # [关键设置] 这里定义维度名称，7维
         feat_names = ["x", "y", "z", "roll", "pitch", "yaw", "gripper"]
             
         stats = {
@@ -290,6 +289,7 @@ def convert():
         stats = {}
         feat_names = []
 
+    # 图像占位统计数据
     for cam_key in img_dims.keys():
         full_cam_key = f"observation.images.{cam_key}"
         stats[full_cam_key] = {
@@ -325,25 +325,7 @@ def convert():
             }
         }
 
-    # ==============================================================================
-    # [修复] 补全 Info 字典，确保包含 total_frames, total_episodes 等关键字段
-    # ==============================================================================
-    info = {
-        "codebase_version": CODEBASE_VERSION,
-        "fps": FPS,
-        "robot_type": ROBOT_TYPE,
-        "total_episodes": len(episodes_meta),
-        "total_frames": total_frames,
-        "total_tasks": 1,
-        "features": features_dict,
-        "data_path": "data/chunk-{chunk_index:03d}/file-{file_index:03d}.parquet",
-        "video_path": "videos/{video_key}/chunk-{chunk_index:03d}/file-{file_index:06d}.mp4",
-        "chunks_size": 1000, 
-        "data_files_size_in_mb": 500,
-        "video_files_size_in_mb": 500
-    }
-
-    with open(OUTPUT_ROOT / "meta" / "info.json", "w") as f: json.dump(info, f, indent=4)
+    with open(OUTPUT_ROOT / "meta" / "info.json", "w") as f: json.dump({"codebase_version": CODEBASE_VERSION, "fps": FPS, "robot_type": ROBOT_TYPE, "features": features_dict}, f, indent=4)
     with open(OUTPUT_ROOT / "meta" / "stats.json", "w") as f: json.dump(stats, f, indent=4)
 
     print(f"✅ Conversion Done! Output: {OUTPUT_ROOT}")
