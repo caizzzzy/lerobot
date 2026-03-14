@@ -95,11 +95,28 @@ class DiffusionPolicy(PreTrainedPolicy):
         """Predict a chunk of actions given environment observations."""
         # stack n latest observations from the queue
         batch = {k: torch.stack(list(self._queues[k]), dim=1) for k in batch if k in self._queues}
-        rgb = np.array(batch['observation.images'][0,0,0].cpu()).transpose(1,2,0)
-        rgb = 255*(rgb - np.min(rgb))/(np.max(rgb)-np.min(rgb))
-        import cv2
-        cv2.imwrite('test.png', rgb)
-        print(1234567)
+        
+        # --- 新增的多视角打印调试代码开始 ---
+        # if 'observation.images' in batch:
+            # 获取相机数量 (对应 shape 的第三个维度)
+            # num_cameras = batch['observation.images'].shape[2]
+            
+            # import cv2
+            # for cam_idx in range(num_cameras):
+            #     # 提取 Batch 0, 观测步 0 的第 cam_idx 个视角的图像
+            #     rgb = np.array(batch['observation.images'][0, 0, cam_idx].cpu()).transpose(1, 2, 0)
+                
+            #     # 归一化处理并转换格式
+            #     rgb = 255 * (rgb - np.min(rgb)) / (np.max(rgb) - np.min(rgb))
+                
+            #     # 分别保存为 test_cam0.png, test_cam1.png 等
+            #     file_name = f'test_cam{cam_idx}.png'
+            #     cv2.imwrite(file_name, rgb)
+                
+            # print(f"1234567: 成功保存 {num_cameras} 个视角的图片。")
+
+        # --- 调试代码结束 ---
+
         actions = self.diffusion.generate_actions(batch, noise=noise)
 
         return actions
@@ -140,9 +157,9 @@ class DiffusionPolicy(PreTrainedPolicy):
             actions = self.predict_action_chunk(batch, noise=noise)
             self._queues[ACTION].extend(actions.transpose(0, 1))
 
-        #action = self._queues[ACTION].popleft()
-        actions = self.predict_action_chunk(batch, noise=noise)
-        return actions
+        action = self._queues[ACTION].popleft()
+        # actions = self.predict_action_chunk(batch, noise=noise)
+        return action
 
     def forward(self, batch: dict[str, Tensor]) -> tuple[Tensor, None]:
         """Run the batch through the model and compute the loss for training or validation."""

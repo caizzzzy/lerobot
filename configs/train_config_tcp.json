@@ -1,11 +1,68 @@
 {
     "dataset": {
-        "repo_id": "lerobot_dataset_agilex0312_senctrlgripobs",
-        "root": "data/lerobot_dataset_agilex0312_senctrlgripobs",
+        "repo_id": "lerobot_dataset_agilex0204",
+        "root": "data/lerobot_dataset_agilex0204_tcp_2",
         "episodes": null,
+        "image_transforms": {
+            "enable": true,
+            "max_num_transforms": 3,
+            "random_order": false,
+            "tfs": {
+                "brightness": {
+                    "weight": 1.0,
+                    "type": "ColorJitter",
+                    "kwargs": {
+                        "brightness": [
+                            0.8,
+                            1.2
+                        ]
+                    }
+                },
+                "contrast": {
+                    "weight": 1.0,
+                    "type": "ColorJitter",
+                    "kwargs": {
+                        "contrast": [
+                            0.8,
+                            1.2
+                        ]
+                    }
+                },
+                "saturation": {
+                    "weight": 1.0,
+                    "type": "ColorJitter",
+                    "kwargs": {
+                        "saturation": [
+                            0.5,
+                            1.5
+                        ]
+                    }
+                },
+                "hue": {
+                    "weight": 1.0,
+                    "type": "ColorJitter",
+                    "kwargs": {
+                        "hue": [
+                            -0.05,
+                            0.05
+                        ]
+                    }
+                },
+                "sharpness": {
+                    "weight": 1.0,
+                    "type": "SharpnessJitter",
+                    "kwargs": {
+                        "sharpness": [
+                            0.5,
+                            1.5
+                        ]
+                    }
+                }
+            }
+        },
         "local_files_only": false,
-        "use_imagenet_stats": false,
-        "video_backend": "torchcodec"
+        "use_imagenet_stats": true,
+        "video_backend": "pyav"
     },
 
     "env":null,
@@ -66,17 +123,17 @@
         "pretrained_backbone_weights": null,
         "use_group_norm": true,
         "spatial_softmax_num_keypoints": 32,
-        "use_separate_rgb_encoder_per_camera": true,
+        "use_separate_rgb_encoder_per_camera": false,
         "down_dims": [
-            256,
             512,
-            1024
+            1024,
+            2048
         ],
         "kernel_size": 5,
         "n_groups": 8,
         "diffusion_step_embed_dim": 128,
         "use_film_scale_modulation": true,
-        "noise_scheduler_type": "DDIM",
+        "noise_scheduler_type": "DDPM",
         "num_train_timesteps": 100,
         "beta_schedule": "squaredcos_cap_v2",
         "beta_start": 0.0001,
@@ -84,7 +141,7 @@
         "prediction_type": "epsilon",
         "clip_sample": true,
         "clip_sample_range": 1.0,
-        "num_inference_steps": 16,
+        "num_inference_steps": null,
         "do_mask_loss_for_padding": false,
         "optimizer_lr": 0.0001,
         "optimizer_betas": [
@@ -96,17 +153,17 @@
         "scheduler_name": "cosine",
         "scheduler_warmup_steps": 500
     },
-    "output_dir": "outputs/train/picknput0312_senctrlgripobs_noimgaugment",
-    "job_name": "lerobot_dataset_agilex0312_senctrlgripobs_noimgaugment",
+    "output_dir": "outputs/train/picknput0204_tcp_2",
+    "job_name": "picknput0204_tcp_2",
     "resume": false,
     "seed": 100000,
-    "num_workers": 12,
+    "num_workers": 4,
     "batch_size": 64,
     "steps": 200000,
     "eval_freq": 25000,
     "log_freq": 200,
     "save_checkpoint": true,
-    "save_freq": 5000,
+    "save_freq": 800,
     "use_policy_training_preset": true,
     "optimizer": {
         "type": "adam",

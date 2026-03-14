@@ -64,9 +64,7 @@
         "use_imagenet_stats": true,
         "video_backend": "pyav"
     },
-
-    "env":null,
-    
+    "env": null,
     "policy": {
         "type": "diffusion",
         "n_obs_steps": 2,
@@ -95,7 +93,6 @@
                     320
                 ]
             },
-            
             "observation.state": {
                 "type": "STATE",
                 "shape": [

@@ -18,17 +18,17 @@ ROBOT_PORT="192.168.10.76"              # 你的机器人连接端口
 # # 注意：确保JSON格式正确，尤其是引号
 # CAMERAS="{ laptop: {type: opencv, index_or_path: 0, width: 1920, height: 1080, fps: 30}, phone: {type: opencv, index_or_path: 1, width: 1920, height: 1080, fps: 30}}"
 # CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},cam_fish: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},cam_global: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
-CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 320, height: 240, fps: 30},cam_fish: {type: opencv, index_or_path: 0, width: 320, height: 240, fps: 30}}"
+CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 320, height: 240, fps: 30}, cam_global: {type: opencv, index_or_path: 1, width: 320, height: 240, fps: 30}}"
 # CAMERAS="{cam_high: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}"
 # --- 策略与模型配置 (Policy) ---
 POLICY_TYPE="diffusion"                      # 策略类型 (例如: act, smolvla, diffusion 等)
-MODEL_PATH="/mnt/nas/projects/robot/lerobot/outputs/train/apple/056000/pretrained_model"       # 服务器上的模型路径或 HuggingFace ID
+MODEL_PATH="/mnt/nas/projects/robot/lerobot/outputs/train/picknput0312_senctrlgripobs/checkpoints/153600/pretrained_model"       # 服务器上的模型路径或 HuggingFace ID
 # TASK="dummy"                             # 任务名称 (部分策略不需要)
 POLICY_DEVICE="cuda"                      # 推理设备: 'cuda', 'mps' (Mac), or 'cpu'
 ACTIONS_PER_CHUNK=50                     # 每次推理输出的动作数量
 
 # --- 客户端微调参数 (Client Tuning) ---
-CHUNK_SIZE_THRESHOLD=0.5                 # 发送新观测数据的阈值
+CHUNK_SIZE_THRESHOLD=0.3                 # 发送新观测数据的阈值
 AGGREGATE_FN="weighted_average"          # 动作聚合函数
 DEBUG_VISUALIZE=True                     # 是否可视化队列大小 (调试用)
 

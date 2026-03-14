@@ -14,8 +14,10 @@ class DianaFollowerConfig(RobotConfig):
     gripper_state_topic: str = "/gripper/joint_state"
     gripper_ctrl_topic: str = "/joint_states"
     
-    # Control Mode: 'joint' (default), 'pose' (Euler), or 'pose_quat' (Quaternion)
-    control_mode: str = "pose"
+    # Control Mode: 'joint' (default), 'pose' (Euler), or 'pose_quat' (Quaternion),'pose_6d'
+    control_mode: str = "joint"
+    # Pose command type: 'absolute' (世界坐标系目标) or 'relative' (在当前 TCP 位姿上叠加增量)
+    pose_command_type: str = "absolute"
     
     # 动作限制
     max_relative_target: float | None = None

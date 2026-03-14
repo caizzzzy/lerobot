@@ -234,7 +234,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         # Generate action based on the most recent observation and its timestep
         try:
             getactions_starts = time.perf_counter()
+            print(4444)
             obs = self.observation_queue.get(timeout=self.config.obs_queue_timeout)
+            print(5555)
             self.logger.info(
                 f"Running inference for observation #{obs.get_timestep()} (must_go: {obs.must_go})"
             )
@@ -243,7 +245,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
                 self._predicted_timesteps.add(obs.get_timestep())
 
             start_time = time.perf_counter()
+            print(6666)
             action_chunk = self._predict_action_chunk(obs)
+            print(7777)
             inference_time = time.perf_counter() - start_time
 
             start_time = time.perf_counter()
@@ -334,13 +338,40 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         ]
 
     def _get_action_chunk(self, observation: dict[str, torch.Tensor]) -> torch.Tensor:
-        """Get an action chunk from the policy. The chunk contains only"""
-        chunk = self.policy.select_action(observation)
-        # chunk = self.policy.predict_action_chunk(observation)
+        """获取完整的动作块"""
+        if self.policy_type == "diffusion":
+            # 引入专门处理队列的工具
+            from lerobot.policies.utils import populate_queues
+            from lerobot.utils.constants import OBS_IMAGES
+            
+            # # 1. 组装图像，兼容 populate_queues 的格式要求
+            # if self.policy.config.image_features:
+            #     batch = dict(observation)
+            #     batch[OBS_IMAGES] = torch.stack(
+            #         [batch[key] for key in self.policy.config.image_features], dim=-4
+            #     )
+            # else:
+            #     batch = observation
+                
+            # # 2. 手动将当前观测塞入策略内部的历史队列中（满足 n_obs_steps=2 的要求）
+            # self.policy._queues = populate_queues(self.policy._queues, batch)
+            
+            # 3. 绕过内部的 action 截断，直接获取完整的 [1, 8, 8] 动作块
+            chunk = self.policy.predict_action_chunk(observation)
+        else:
+            # 其他非 diffusion 策略（如 ACT, Pi0 等）保持默认逻辑
+            chunk = self.policy.predict_action_chunk(observation)
+
         if chunk.ndim != 3:
-            chunk = chunk.unsqueeze(0)  # adding batch dimension, now shape is (B, chunk_size, action_dim)
+            chunk = chunk.unsqueeze(0)  # adding batch dimension
 
         return chunk[:, : self.actions_per_chunk, :]
+        # chunk = self.policy.select_action(observation)
+        # chunk = self.policy.predict_action_chunk(observation)
+        # if chunk.ndim != 3:
+        #     chunk = chunk.unsqueeze(0)  # adding batch dimension, now shape is (B, chunk_size, action_dim)
+
+        # return chunk[:, : self.actions_per_chunk, :]
 
     def _predict_action_chunk(self, observation_t: TimedObservation) -> list[TimedAction]:
         """Predict an action chunk based on an observation.
@@ -369,7 +400,32 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
 
         """3. Get action chunk"""
         start_inference = time.perf_counter()
+
+# ==================== 新增代码开始 (修复队列Bug & NoneType报错) ====================
+        from lerobot.policies.utils import populate_queues
+        from lerobot.utils.constants import OBS_IMAGES
+
+        # 0. 移除预处理管道默认生成的、值为 None 的 action 键（核心修复）
+        if "action" in observation:
+            observation.pop("action")
+
+        # 1. 把各个独立的相机图像打包成一个统一的 OBS_IMAGES tensor (Diffusion 专属需求)
+        if hasattr(self.policy.config, "image_features") and self.policy.config.image_features:
+            if OBS_IMAGES not in observation:
+                print(8888)
+                observation[OBS_IMAGES] = torch.stack(
+                    [observation[key] for key in self.policy.config.image_features], dim=-4
+                )
+
+        # 2. 将当前帧更新到模型的历史队列中
+        if hasattr(self.policy, "_queues"): 
+            print(9999)
+            self.policy._queues = populate_queues(self.policy._queues, observation)
+        # ==================== 新增代码结束 =================================================
+
+        print(1222)
         action_tensor = self._get_action_chunk(observation)
+        print(1333)
         inference_time = time.perf_counter() - start_inference
         self.logger.info(
             f"Preprocessing and inference took {inference_time:.4f}s, action shape: {action_tensor.shape}"
@@ -393,6 +449,7 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         # Stack back to (B, chunk_size, action_dim), then remove batch dim
         action_tensor = torch.stack(processed_actions, dim=1).squeeze(0)
         self.logger.debug(f"Postprocessed action shape: {action_tensor.shape}")
+        self.logger.info(action_tensor)
 
         action_tensor = action_tensor.detach().cpu()
 

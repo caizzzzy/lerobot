@@ -19,8 +19,6 @@ from ..robot import Robot
 from ..utils import ensure_safe_goal_position
 from .config_diana_follower import DianaFollowerConfig
 from lerobot.utils.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
-import torch
-from pytorch3d.transforms import matrix_to_rotation_6d, rotation_6d_to_matrix
 
 # debug Imports
 import cv2
@@ -131,7 +129,6 @@ class DianaFollower(Robot):
     - 'joint': 关节空间控制
     - 'pose': 笛卡尔空间 (XYZ + Euler RPY)
     - 'pose_quat': 笛卡尔空间 (XYZ + Quaternion)
-    - 'pose_6d':6d representation
     """
     config_class = DianaFollowerConfig
     name = "diana_follower"
@@ -155,8 +152,6 @@ class DianaFollower(Robot):
         self.ee_pose_keys = ("ee_x", "ee_y", "ee_z", "ee_rx", "ee_ry", "ee_rz")
         # Pose Mode (Quaternion)
         self.ee_pose_quat_keys = ("ee_x", "ee_y", "ee_z", "ee_qx", "ee_qy", "ee_qz", "ee_qw")
-        #6d pose
-        self.ee_pose_6d_keys = ("ee_x", "ee_y", "ee_z", "ee_rot_6d_1", "ee_rot_6d_2", "ee_rot_6d_3", "ee_rot_6d_4","ee_rot_6d_5","ee_rot_6d_6")
         
         self.gripper_key = "gripper"
 
@@ -170,10 +165,6 @@ class DianaFollower(Robot):
         # Pose 模式特征
         if self.config.control_mode == 'pose_quat':
             pose_ft = {k: float for k in self.ee_pose_quat_keys}
-
-        elif self.config.control_mode == 'pose_6d':
-            pose_ft = {k: float for k in self.ee_pose_6d_keys}
-
         else:
             pose_ft = {k: float for k in self.ee_pose_keys}
             
@@ -277,8 +268,7 @@ class DianaFollower(Robot):
                     # 转换 Euler -> Quaternion
                     # Diana 返回 Euler XYZ (rx, ry, rz)
                     x, y, z, rx, ry, rz = tcp_pose
-                    r = R.from_rotvec([rx, ry, rz])#111
-                    # r = R.from_euler('xyz', [rx, ry, rz], degrees=False)
+                    r = R.from_euler('xyz', [rx, ry, rz], degrees=False)
                     quat = r.as_quat() # [x, y, z, w]
                     
                     obs_dict['ee_x'] = float(x)
@@ -288,22 +278,6 @@ class DianaFollower(Robot):
                     obs_dict['ee_qy'] = float(quat[1])
                     obs_dict['ee_qz'] = float(quat[2])
                     obs_dict['ee_qw'] = float(quat[3])
-
-                elif self.config.control_mode == 'pose_6d':
-                    x, y, z, rx, ry, rz = tcp_pose
-                    # Diana 返回的是旋转向量，用 scipy 先转为旋转矩阵
-                    r = R.from_rotvec([rx, ry, rz])
-                    rot_matrix = r.as_matrix() # 得到 3x3 numpy array
-                    
-                    # 提取旋转矩阵的前两行 (索引 0 和 1)，并展平为 6 维向量
-                    # rot_6d = rot_matrix[:2, :].flatten()
-                    rot_6d = matrix_to_rotation_6d(rot_matrix).numpy()
-                    
-                    obs_dict['ee_x'] = float(x)
-                    obs_dict['ee_y'] = float(y)
-                    obs_dict['ee_z'] = float(z)
-                    for i in range(6):
-                        obs_dict[self.ee_pose_6d_keys[i + 3]] = float(rot_6d[i])
                 else:
                     # 使用 6 变量 Euler
                     for key, value in zip(self.ee_pose_keys, tcp_pose):
@@ -327,14 +301,14 @@ class DianaFollower(Robot):
         with self.ros_node.image_lock:
             if self.ros_node.latest_image is not None:
                 obs_dict["cam_high"] = self.ros_node.latest_image.copy()
-                obs_dict["cam_global"] = self.ros_node.latest_imageglobal.copy()
+                obs_dict["cam_global"] = self.ros_node.latest_imagefish.copy()
             else:
                 logger.warning("No image received from ROS yet.")
                 obs_dict["cam_high"] = np.zeros((480, 640, 3), dtype=np.uint8)
                 obs_dict["cam_global"] = np.zeros((480, 640, 3), dtype=np.uint8)
 
-        # # ==================== [保存图像调试代码] ====================
-        # self._save_debug_images(obs_dict)
+        # ==================== [保存图像调试代码] ====================
+        self._save_debug_images(obs_dict)
         # ==========================================================
 
         dt_ms = (time.perf_counter() - start) * 1e3
@@ -355,7 +329,7 @@ class DianaFollower(Robot):
 
                 save_tasks = {
                     "picture/debug_view.jpg": obs_dict.get("cam_high"),
-                    "picture/debug_viewglobal.jpg": obs_dict.get("cam_global"),
+                    "picture/debug_viewfish.jpg": obs_dict.get("cam_global"),
                 }
 
                 for path, img in save_tasks.items():
@@ -401,39 +375,8 @@ class DianaFollower(Robot):
                     try:
                         # 3. 传入归一化后的 safe_quat (修改了这行)
                         r = R.from_quat(safe_quat)
-                        rotvec = r.as_rotvec() #111
-                        target_pose = pos + list(rotvec)#111
-                        # euler = r.as_euler('xyz', degrees=False)
-                        # target_pose = pos + list(euler)
-                        servoL_ex(target_pose, t=0.02, ah_t=0.1, gain=200, ipAddress=self.config.port)
-                    except Exception as e:
-                        logger.error(f"Error converting quat to euler: {e}")
-                else:
-                    # Missing keys
-                    pass
-
-            elif self.config.control_mode == 'pose_6d':
-                # 
-                needed_keys = self.ee_pose_6d_keys
-                if all(k in action for k in needed_keys):
-                    pos = [action['ee_x'], action['ee_y'], action['ee_z']]
-
-                    # 1. 提取 6D 旋转数据并转为 PyTorch Tensor
-                    rot_6d_list = [action[k] for k in needed_keys[3:]]
-                    rot_6d_tensor = torch.tensor(rot_6d_list, dtype=torch.float32)
-
-                    try:
-                        # 2. PyTorch3D: 6D -> 3x3 旋转矩阵 (这一步数学上是严格可逆的)
-                        rot_matrix_tensor = rotation_6d_to_matrix(rot_6d_tensor)
-                        rot_matrix_np = rot_matrix_tensor.numpy()
-                        
-                        # 3. [核心修复] 使用 Scipy 将矩阵转回 Axis-Angle 旋转向量
-                        # 这样完美匹配了 get_observation 里的 R.from_rotvec，保证符号和方向绝对一致
-                        r = R.from_matrix(rot_matrix_np)
-                        rotvec = r.as_rotvec()
-                        # rot_vec = r.as_rotvec().tolist()
-                        
-                        target_pose = pos + list(rotvec)
+                        euler = r.as_euler('xyz', degrees=False)
+                        target_pose = pos + list(euler)
                         servoL_ex(target_pose, t=0.02, ah_t=0.1, gain=200, ipAddress=self.config.port)
                     except Exception as e:
                         logger.error(f"Error converting quat to euler: {e}")
@@ -519,11 +462,6 @@ if __name__ == "__main__":
         
         if config.control_mode == 'pose_quat':
              for key in robot.ee_pose_quat_keys:
-                 if key in obs: action[key] = obs[key]
-             if robot.gripper_key in obs:
-                 action[robot.gripper_key] = obs[robot.gripper_key]
-        elif config.control_mode == 'pose_6d':
-             for key in robot.ee_pose_6d_keys:
                  if key in obs: action[key] = obs[key]
              if robot.gripper_key in obs:
                  action[robot.gripper_key] = obs[robot.gripper_key]

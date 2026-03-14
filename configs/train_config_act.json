@@ -1,0 +1,91 @@
+{
+  "dataset": {
+    "repo_id": "lerobot_dataset_agilex0312_senctrlgripobs",
+    "root": "data/lerobot_dataset_agilex0312_senctrlgripobs_big",
+    "episodes": null,
+    "local_files_only": false,
+    "use_imagenet_stats": false,
+    "video_backend": "torchcodec"
+  },
+
+  "policy": {
+    "type": "act",
+    "repo_id": "lerobot_dataset_agilex0312_senctrlgripobs",
+    "push_to_hub": false,
+    "n_obs_steps": 1,
+    "chunk_size": 100,
+    "input_features": {
+            "observation.images.cam_high": {
+                "type": "VISUAL",
+                "shape": [
+                    3,
+                    480,
+                    640
+                ]
+            },
+            "observation.images.cam_global": {
+                "type": "VISUAL",
+                "shape": [
+                    3,
+                    480,
+                    640
+                ]
+            },
+            
+            "observation.state": {
+                "type": "STATE",
+                "shape": [
+                    8
+                ]
+            }
+        },
+        "output_features": {
+            "action": {
+                "type": "ACTION",
+                "shape": [
+                    8
+                ]
+            }
+        },
+    "n_action_steps": 100,
+    "vision_backbone": "resnet18",
+    "pretrained_backbone_weights": "ResNet18_Weights.IMAGENET1K_V1",
+    "replace_final_stride_with_dilation": false,
+    "pre_norm": false,
+    "dim_model": 512,
+    "n_heads": 8,
+    "dim_feedforward": 3200,
+    "feedforward_activation": "relu",
+    "n_encoder_layers": 4,
+    "n_decoder_layers": 1,
+    "use_vae": true,
+    "latent_dim": 32,
+    "n_vae_encoder_layers": 4,
+    "dropout": 0.1,
+    "kl_weight": 10.0,
+    "optimizer_lr": 1e-5,
+    "optimizer_weight_decay": 1e-4,
+    "optimizer_lr_backbone": 1e-5
+  },
+  "output_dir": "outputs/train/lerobot_dataset_agilex0312_senctrlgripobs_act",
+  "job_name": "lerobot_dataset_agilex0312_senctrlgripobs_act",
+  "resume": false,
+  "seed": 1000,
+  "num_workers": 8,
+  "batch_size": 8,
+  "steps": 100000,
+  "eval_freq": 20000,
+  "log_freq": 200,
+  "save_checkpoint": true,
+  "save_freq": 1000,
+  "use_policy_training_preset": true,
+
+    "wandb": {
+        "enable": true,
+        "disable_artifact": true,
+        "project": "lerobot",
+        "entity": "1259809511-south-china-university-of-technology",
+        "notes": null,
+        "mode": "online"
+    }
+}

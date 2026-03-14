@@ -277,7 +277,12 @@ class RobotClient:
             try:
                 # Use StreamActions to get a stream of actions from the server
                 actions_chunk = self.stub.GetActions(services_pb2.Empty())
+                print(actions_chunk)
+
+                
                 if len(actions_chunk.data) == 0:
+                    self.logger.info("received `Empty` from server, wait for next call")
+                    print(1111)
                     continue  # received `Empty` from server, wait for next call
 
                 receive_time = time.time()
@@ -289,7 +294,9 @@ class RobotClient:
 
                 # Log device type of received actions
                 if len(timed_actions) > 0:
+                    print(2222)
                     received_device = timed_actions[0].get_action().device.type
+                    print(3333)
                     self.logger.debug(f"Received actions on device: {received_device}")
 
                 # Move actions to client_device (e.g., for downstream planners that need GPU)
@@ -428,6 +435,7 @@ class RobotClient:
             # If there are no actions left in the queue, the observation must go through processing!
             with self.action_queue_lock:
                 observation.must_go = self.must_go.is_set() and self.action_queue.empty()
+                # observation.must_go = self.must_go.is_set() or self.action_queue.empty()
                 current_queue_size = self.action_queue.qsize()
 
             _ = self.send_observation(observation)
