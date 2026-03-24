@@ -18,7 +18,7 @@ CODEBASE_VERSION = "v3.0"
 SOURCE_ROOT = Path("/home/robot/agilex/data0204") 
 
 # 输出目录
-OUTPUT_ROOT = Path("data/lerobot_dataset_agilex0312_senctrlgripobs_1")
+OUTPUT_ROOT = Path("data/lerobot_dataset_agilex0322_senctrlgripobs_fps10")
 
 # [新增] 目标图像分辨率 (高度, 宽度) -> 对应 320宽 240高
 # 注意：torchvision 的 resize 接受 (H, W)
@@ -34,7 +34,8 @@ CAMERA_MAPPING = {
 
 # 机器人配置
 ROBOT_TYPE = "agilex_pika"
-FPS = 30
+FPS = 10                  # [修改] 目标频率设为 10Hz
+DOWNSAMPLE_FACTOR = 3     # [新增] 50Hz 降到 10Hz，每 5 帧取 1 帧
 TASK_DESCRIPTION = "Pick up the object" 
 
 # =============================================================
@@ -147,12 +148,20 @@ def convert():
         except Exception as e:
             print(f"Skipping {ep_dir.name}: {e}")
             continue
+        # [新增] 对传感器数据进行降采样 (每 5 帧取 1 帧)
+        state = state[::DOWNSAMPLE_FACTOR]
+        action = action[::DOWNSAMPLE_FACTOR]
+        timestamps = timestamps[::DOWNSAMPLE_FACTOR]
 
         num_frames = len(timestamps)
         all_states.append(state)
         all_actions.append(action)
         
         img_paths_map = get_image_paths_from_hdf5(h5_path, ep_dir)
+
+        # [新增] 对图像路径进行同步降采样
+        for cam_key in img_paths_map:
+            img_paths_map[cam_key] = img_paths_map[cam_key][::DOWNSAMPLE_FACTOR]
         
         # 初始化 Episode Metadata
         ep_meta = {
@@ -290,7 +299,7 @@ def convert():
             "dtype": "video",
             "shape": [dims['height'], dims['width'], 3],
             "names": ["height", "width", "channel"],
-            "info": {"video.fps": FPS, "video.codec": "h264", "video.pix_fmt": "yuv420p", "video.is_depth_map": False, "has_audio": False}
+            "info": {"video.fps": FPS, "video.codec": "av1", "video.pix_fmt": "rgb24", "video.is_depth_map": False, "has_audio": False}
         }
 
     info = {
