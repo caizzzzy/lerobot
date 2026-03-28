@@ -1,11 +1,11 @@
 {
     "dataset": {
         "repo_id": "lerobot_dataset_agilex0312_senctrlgripobs",
-        "root": "/mnt/nas/projects/robot/lerobot/data/lerobot_dataset_agilex0322_senctrlgripobs_fps10",
+        "root": "/mnt/nas/projects/robot/lerobot/data/lerobot_dataset_agilex0312_senctrlgripobs",
         "episodes": null,
         "local_files_only": false,
         "use_imagenet_stats": false,
-        "video_backend": "torchcodec"
+        "video_backend": "pyav"
     },
 
     "env":null,
@@ -54,9 +54,9 @@
                 ]
             }
         },
-        "horizon": 16,
-        "n_action_steps": 8,
-        "drop_n_last_frames": 7,
+        "horizon": 48,
+        "n_action_steps": 24,
+        "drop_n_last_frames": 23,
         "vision_backbone": "resnet18",
         "crop_shape": [
             216,
@@ -96,8 +96,8 @@
         "scheduler_name": "cosine",
         "scheduler_warmup_steps": 500
     },
-    "output_dir": "/mnt/nas/projects/robot/lerobot/outputs/train/picknput0323_senctrlgripobs_noimgaugment_fps10_1",
-    "job_name": "lerobot_dataset_agilex0323_senctrlgripobs_noimgaugment_fps10",
+    "output_dir": "/mnt/nas/projects/robot/lerobot/outputs/train/picknput0326_senctrlgripobs_noimgaugment_fps30",
+    "job_name": "lerobot_dataset_agilex0326_senctrlgripobs_noimgaugment_fps30",
     "resume": false,
     "seed": 100000,
     "num_workers": 8,
