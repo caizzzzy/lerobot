@@ -234,9 +234,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
         # Generate action based on the most recent observation and its timestep
         try:
             getactions_starts = time.perf_counter()
-            print(4444)
+            # print(4444)
             obs = self.observation_queue.get(timeout=self.config.obs_queue_timeout)
-            print(5555)
+            # print(5555)
             self.logger.info(
                 f"Running inference for observation #{obs.get_timestep()} (must_go: {obs.must_go})"
             )
@@ -245,9 +245,9 @@ class PolicyServer(services_pb2_grpc.AsyncInferenceServicer):
                 self._predicted_timesteps.add(obs.get_timestep())
 
             start_time = time.perf_counter()
-            print(6666)
+            # print(6666)
             action_chunk = self._predict_action_chunk(obs)
-            print(7777)
+            # print(7777)
             inference_time = time.perf_counter() - start_time
 
             start_time = time.perf_counter()

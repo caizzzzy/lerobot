@@ -15,14 +15,14 @@ CODEBASE_VERSION = "v3.0"
 # ================= 配置区域 (请修改这里) =================
 
 # [重要] 原始数据父目录
-SOURCE_ROOT = Path("/home/robot/agilex/data0204") 
+SOURCE_ROOT = Path("/home/robot/agilex/datatest0331") 
 
 # 输出目录
-OUTPUT_ROOT = Path("data/lerobot_dataset_agilex0312_senctrlgripobs_1")
+OUTPUT_ROOT = Path("data/lerobot_dataset_0331_big")
 
 # [新增] 目标图像分辨率 (高度, 宽度) -> 对应 320宽 240高
 # 注意：torchvision 的 resize 接受 (H, W)
-TARGET_RESOLUTION = (240, 320)
+TARGET_RESOLUTION = (480, 640)
 
 # 摄像头映射
 # key: hdf5中的名称, value: lerobot数据集中的简称
