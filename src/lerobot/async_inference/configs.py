@@ -43,6 +43,54 @@ def get_aggregate_function(name: str) -> Callable[[torch.Tensor, torch.Tensor], 
 
 
 @dataclass
+class AsyncRecorderConfig:
+    """Configuration for asynchronous client-side experiment recording."""
+
+    enable: bool = field(default=False, metadata={"help": "Enable asynchronous recording on the client"})
+    output_dir: str = field(
+        default="outputs/real_inference_records",
+        metadata={"help": "Base directory used to store recorded videos and action logs"},
+    )
+    camera_keys: list[str] = field(
+        default_factory=lambda: ["cam_high", "cam_global"],
+        metadata={"help": "Observation camera keys to record as videos"},
+    )
+    queue_size: int = field(
+        default=512,
+        metadata={"help": "Maximum number of pending recording events before dropping old ones"},
+    )
+    video_fps: int = field(default=0, metadata={"help": "Recorded video FPS. Use 0 to follow client fps"})
+    video_codec: str = field(default="MJPG", metadata={"help": "FourCC codec used by OpenCV VideoWriter"})
+    video_extension: str = field(
+        default="avi",
+        metadata={"help": "Recorded video container extension, e.g. avi or mp4"},
+    )
+    segment_seconds: int = field(
+        default=60,
+        metadata={"help": "Rotate video files every N seconds to reduce corruption on interrupted shutdowns"},
+    )
+
+    def __post_init__(self):
+        if self.queue_size <= 0:
+            raise ValueError(f"queue_size must be positive, got {self.queue_size}")
+
+        if self.video_fps < 0:
+            raise ValueError(f"video_fps must be non-negative, got {self.video_fps}")
+
+        if not self.output_dir:
+            raise ValueError("output_dir cannot be empty")
+
+        if not self.camera_keys:
+            raise ValueError("camera_keys cannot be empty when recorder is enabled")
+
+        if not self.video_extension:
+            raise ValueError("video_extension cannot be empty")
+
+        if self.segment_seconds <= 0:
+            raise ValueError(f"segment_seconds must be positive, got {self.segment_seconds}")
+
+
+@dataclass
 class PolicyServerConfig:
     """Configuration for PolicyServer.
 
@@ -147,6 +195,10 @@ class RobotClientConfig:
     debug_visualize_queue_size: bool = field(
         default=False, metadata={"help": "Visualize the action queue size"}
     )
+    recorder: AsyncRecorderConfig = field(
+        default_factory=AsyncRecorderConfig,
+        metadata={"help": "Asynchronous recording configuration"},
+    )
 
     @property
     def environment_dt(self) -> float:
@@ -200,4 +252,14 @@ class RobotClientConfig:
             "task": self.task,
             "debug_visualize_queue_size": self.debug_visualize_queue_size,
             "aggregate_fn_name": self.aggregate_fn_name,
+            "recorder": {
+                "enable": self.recorder.enable,
+                "output_dir": self.recorder.output_dir,
+                "camera_keys": self.recorder.camera_keys,
+                "queue_size": self.recorder.queue_size,
+                "video_fps": self.recorder.video_fps,
+                "video_codec": self.recorder.video_codec,
+                "video_extension": self.recorder.video_extension,
+                "segment_seconds": self.recorder.segment_seconds,
+            },
         }

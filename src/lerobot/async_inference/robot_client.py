@@ -79,6 +79,7 @@ from .helpers import (
     map_robot_keys_to_lerobot_features,
     visualize_action_queue_size,
 )
+from .inference_recorder import AsyncInferenceRecorder
 
 
 class RobotClient:
@@ -130,6 +131,12 @@ class RobotClient:
 
         # FPS measurement
         self.fps_tracker = FPSTracker(target_fps=self.config.fps)
+        self.recorder = AsyncInferenceRecorder(
+            config.recorder,
+            client_fps=self.config.fps,
+            logger=self.logger,
+            frame_provider=self._get_recording_frames,
+        )
 
         self.logger.info("Robot connected and ready")
 
@@ -277,12 +284,8 @@ class RobotClient:
             try:
                 # Use StreamActions to get a stream of actions from the server
                 actions_chunk = self.stub.GetActions(services_pb2.Empty())
-                print(actions_chunk)
-
-                
                 if len(actions_chunk.data) == 0:
                     self.logger.info("received `Empty` from server, wait for next call")
-                    print(1111)
                     continue  # received `Empty` from server, wait for next call
 
                 receive_time = time.time()
@@ -294,9 +297,7 @@ class RobotClient:
 
                 # Log device type of received actions
                 if len(timed_actions) > 0:
-                    print(2222)
                     received_device = timed_actions[0].get_action().device.type
-                    print(3333)
                     self.logger.debug(f"Received actions on device: {received_device}")
 
                 # Move actions to client_device (e.g., for downstream planners that need GPU)
@@ -371,6 +372,32 @@ class RobotClient:
         with self.action_queue_lock:
             return not self.action_queue.empty()
 
+    def _get_recording_frames(self) -> dict[str, Any]:
+        """Return the latest camera frames for continuous recording when the robot exposes them."""
+        ros_node = getattr(self.robot, "ros_node", None)
+        if ros_node is None:
+            return {}
+
+        frames = {}
+
+        if "cam_high" in self.config.recorder.camera_keys:
+            image_lock = getattr(ros_node, "image_lock", None)
+            if image_lock is not None:
+                with image_lock:
+                    latest_image = getattr(ros_node, "latest_image", None)
+                    if latest_image is not None:
+                        frames["cam_high"] = latest_image.copy()
+
+        if "cam_global" in self.config.recorder.camera_keys:
+            imageglobal_lock = getattr(ros_node, "imageglobal_lock", None)
+            if imageglobal_lock is not None:
+                with imageglobal_lock:
+                    latest_imageglobal = getattr(ros_node, "latest_imageglobal", None)
+                    if latest_imageglobal is not None:
+                        frames["cam_global"] = latest_imageglobal.copy()
+
+        return frames
+
     def _action_tensor_to_action_dict(self, action_tensor: torch.Tensor) -> dict[str, float]:
         action = {key: action_tensor[i].item() for i, key in enumerate(self.robot.action_features)}
         return action
@@ -386,8 +413,14 @@ class RobotClient:
             timed_action = self.action_queue.get_nowait()
         get_end = time.perf_counter() - get_start
 
-        _performed_action = self.robot.send_action(
-            self._action_tensor_to_action_dict(timed_action.get_action())
+        requested_action = self._action_tensor_to_action_dict(timed_action.get_action())
+        _performed_action = self.robot.send_action(requested_action)
+        self.recorder.log_action(
+            action_timestep=timed_action.get_timestep(),
+            action_source_timestamp=timed_action.get_timestamp(),
+            action_execute_timestamp=time.time(),
+            requested_action=requested_action,
+            applied_action=_performed_action if isinstance(_performed_action, dict) else requested_action,
         )
         with self.latest_action_lock:
             self.latest_action = timed_action.get_timestep()
@@ -439,6 +472,13 @@ class RobotClient:
                 current_queue_size = self.action_queue.qsize()
 
             _ = self.send_observation(observation)
+            self.recorder.log_observation(
+                observation=raw_observation,
+                timestamp=observation.get_timestamp(),
+                timestep=observation.get_timestep(),
+                queue_size=current_queue_size,
+                must_go=observation.must_go,
+            )
 
             self.logger.debug(f"QUEUE SIZE: {current_queue_size} (Must go: {observation.must_go})")
             if observation.must_go:
@@ -500,6 +540,7 @@ def async_client(cfg: RobotClientConfig):
     client = RobotClient(cfg)
 
     if client.start():
+        client.recorder.start()
         client.logger.info("Starting action receiver thread...")
 
         # Create and start action receiver thread
@@ -514,7 +555,10 @@ def async_client(cfg: RobotClientConfig):
 
         finally:
             client.stop()
-            action_receiver_thread.join()
+            client.recorder.stop()
+            action_receiver_thread.join(timeout=2.0)
+            if action_receiver_thread.is_alive():
+                client.logger.warning("Action receiver thread did not exit within 2s during shutdown.")
             if cfg.debug_visualize_queue_size:
                 visualize_action_queue_size(client.action_queue_size)
             client.logger.info("Client stopped")

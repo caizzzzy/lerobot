@@ -39,6 +39,12 @@ CHUNK_SIZE_THRESHOLD=0.3               # 发送新观测数据的阈值
 AGGREGATE_FN="weighted_average"          # 动作聚合函数
 DEBUG_VISUALIZE=True                     # 是否可视化队列大小 (调试用)
 
+# --- 实验记录配置 (Asynchronous Recorder) ---
+RECORD_ENABLE=True
+RECORD_DIR="${SCRIPT_DIR}/outputs/real_inference_records"
+RECORD_CAMERAS="[cam_high, cam_global]"
+RECORD_QUEUE_SIZE=1024
+
 # ==========================================
 # 脚本逻辑 (通常无需修改)
 # ==========================================
@@ -97,6 +103,10 @@ elif [ "$MODE" == "client" ]; then
         --chunk_size_threshold="$CHUNK_SIZE_THRESHOLD" \
         --aggregate_fn_name="$AGGREGATE_FN" \
         --debug_visualize_queue_size="$DEBUG_VISUALIZE" \
+        --recorder.enable="$RECORD_ENABLE" \
+        --recorder.output_dir="$RECORD_DIR" \
+        --recorder.camera_keys="$RECORD_CAMERAS" \
+        --recorder.queue_size="$RECORD_QUEUE_SIZE" \
         --robot.port="$ROBOT_PORT"
         # --robot.id="$ROBOT_ID"
         # --task="$TASK"
